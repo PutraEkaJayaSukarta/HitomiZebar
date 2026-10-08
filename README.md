@@ -2,6 +2,10 @@
 
 A pink, Hyprland-inspired status bar for [Zebar](https://github.com/glzr-io/zebar), designed to work with [GlazeWM](https://github.com/glzr-io/glazewm).
 
+## Preview
+
+![HitomiZebar desktop preview](preview.png)
+
 ## Requirements
 
 - Windows
