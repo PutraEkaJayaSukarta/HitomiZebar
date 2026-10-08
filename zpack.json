@@ -1,0 +1,53 @@
+{
+  "$schema": null,
+  "name": "hitomi",
+  "version": "1.0.0",
+  "description": "Hitomi's pink Hyprland-inspired desktop bar",
+  "tags": [
+    "hyprland",
+    "pink",
+    "glazewm"
+  ],
+  "previewImages": [],
+  "repositoryUrl": "https://github.com/PutraEkaJayaSukarta/HitomiZebar",
+  "widgets": [
+    {
+      "name": "hitomi-bar",
+      "htmlPath": "./with-glazewm.html",
+      "zOrder": "top_most",
+      "shownInTaskbar": false,
+      "focused": false,
+      "resizable": false,
+      "transparent": true,
+      "includeFiles": [
+        "with-glazewm.html",
+        "styles.css"
+      ],
+      "caching": {
+        "defaultDuration": 604800,
+        "rules": []
+      },
+      "privileges": {
+        "shellCommands": []
+      },
+      "presets": [
+        {
+          "name": "default",
+          "anchor": "top_center",
+          "offsetX": "0px",
+          "offsetY": "0px",
+          "width": "100%",
+          "height": "44px",
+          "monitorSelection": {
+            "type": "all"
+          },
+          "dockToEdge": {
+            "enabled": true,
+            "edge": "top",
+            "windowMargin": "0px"
+          }
+        }
+      ]
+    }
+  ]
+}

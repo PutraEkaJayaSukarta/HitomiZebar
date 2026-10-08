@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hitomi Taskbar</title>
+
+  <link rel="stylesheet" href="./styles.css" />
+
+  <script
+    src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"
+    crossorigin="anonymous"
+  ></script>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { useState, useRef, useEffect } from 'https://esm.sh/react@18?dev';
+    import { createRoot } from 'https://esm.sh/react-dom@18/client?dev';
+    import * as zebar from 'https://esm.sh/zebar@3.0';
+
+    const providers = zebar.createProviderGroup({
+      glazewm: { type: 'glazewm' },
+      media: { type: 'media' },
+      weather: { type: 'weather' },
+      cpu: { type: 'cpu' },
+      memory: { type: 'memory' },
+      battery: { type: 'battery' },
+      date: { type: 'date', formatting: 'EEE, dd/MM/yy HH:mm:ss' },
+    });
+
+    // Ambil semua window dari sebuah container (rekursif)
+    function getWindows(container) {
+      if (!container) return [];
+      if (container.type === 'window') return [container];
+      return (container.children ?? []).flatMap(getWindows);
+    }
+
+    // Window sedang di-minimize?
+    function isMinimized(win) {
+      return win?.state?.type === 'minimized';
+    }
+
+    // Nama + ikon per aplikasi (key = nama proses huruf kecil tanpa .exe)
+    const APP_INFO = {
+      chrome: { name: 'Chrome', icon: '🌐' },
+      msedge: { name: 'Edge', icon: '🌐' },
+      firefox: { name: 'Firefox', icon: '🦊' },
+      brave: { name: 'Brave', icon: '🦁' },
+      code: { name: 'VS Code', icon: '💻' },
+      discord: { name: 'Discord', icon: '💬' },
+      spotify: { name: 'Spotify', icon: '🎵' },
+      explorer: { name: 'Explorer', icon: '📁' },
+      windowsterminal: { name: 'Terminal', icon: '⌨️' },
+      wezterm: { name: 'WezTerm', icon: '⌨️' },
+      alacritty: { name: 'Alacritty', icon: '⌨️' },
+      notepad: { name: 'Notepad', icon: '📝' },
+      obsidian: { name: 'Obsidian', icon: '🔮' },
+      telegram: { name: 'Telegram', icon: '✈️' },
+      steam: { name: 'Steam', icon: '🎮' },
+      vlc: { name: 'VLC', icon: '🎬' },
+    };
+
+    function appInfo(win) {
+      const key = (win.processName || '').toLowerCase().replace(/\.exe$/, '');
+      if (APP_INFO[key]) return APP_INFO[key];
+
+      const raw = (win.processName || win.title || 'App').replace(/\.exe$/i, '');
+      return {
+        name: raw.charAt(0).toUpperCase() + raw.slice(1),
+        icon: (raw.charAt(0) || '♡').toUpperCase(),
+      };
+    }
+
+    function weatherIcon(status = '') {
+      if (status.includes('thunder')) return '⛈️';
+      if (status.includes('snow')) return '🌨️';
+      if (status.includes('rain')) return '🌧️';
+      if (status.includes('cloud')) return '☁️';
+      if (status.includes('night')) return '🌙';
+      return '☀️';
+    }
+
+    /* ======================================================
+       THEME PRESETS
+       ====================================================== */
+
+    const THEMES = {
+      trans: {
+        name: 'Trans Pride',
+        emoji: '🏳️‍⚧️',
+        pink: '#f5a9b8', pinkDeep: '#ff8fb1',
+        blue: '#5bcefa', blueSoft: '#a8e4fb',
+        white: '#ffffff',
+        text: '#fdf1f6', textDim: '#b9a6c4',
+        bg: 'rgba(30, 22, 44, 0.90)',
+        pillBg: 'rgba(255, 255, 255, 0.055)',
+        pillBorder: 'rgba(245, 169, 184, 0.28)',
+        hover: 'rgba(91, 206, 250, 0.16)',
+      },
+      sakura: {
+        name: 'Sakura',
+        emoji: '🌸',
+        pink: '#ffb7c5', pinkDeep: '#ff69b4',
+        blue: '#e8a0bf', blueSoft: '#ffd1dc',
+        white: '#fff0f5',
+        text: '#fff5f8', textDim: '#c9929e',
+        bg: 'rgba(35, 15, 25, 0.92)',
+        pillBg: 'rgba(255, 105, 180, 0.06)',
+        pillBorder: 'rgba(255, 105, 180, 0.25)',
+        hover: 'rgba(255, 183, 197, 0.14)',
+      },
+      ocean: {
+        name: 'Ocean',
+        emoji: '🌊',
+        pink: '#4ecdc4', pinkDeep: '#00b4d8',
+        blue: '#0077b6', blueSoft: '#90e0ef',
+        white: '#caf0f8',
+        text: '#e0fbfc', textDim: '#6eb5c7',
+        bg: 'rgba(8, 20, 40, 0.93)',
+        pillBg: 'rgba(0, 119, 182, 0.07)',
+        pillBorder: 'rgba(0, 180, 216, 0.25)',
+        hover: 'rgba(78, 205, 196, 0.14)',
+      },
+      sunset: {
+        name: 'Sunset',
+        emoji: '🌅',
+        pink: '#ff6b6b', pinkDeep: '#ff4757',
+        blue: '#ffa502', blueSoft: '#ffc048',
+        white: '#fff3e0',
+        text: '#fff5ee', textDim: '#c4956e',
+        bg: 'rgba(35, 15, 10, 0.92)',
+        pillBg: 'rgba(255, 107, 107, 0.06)',
+        pillBorder: 'rgba(255, 71, 87, 0.25)',
+        hover: 'rgba(255, 165, 2, 0.14)',
+      },
+      cyber: {
+        name: 'Cyber',
+        emoji: '⚡',
+        pink: '#e040fb', pinkDeep: '#d500f9',
+        blue: '#00e676', blueSoft: '#69f0ae',
+        white: '#e0ffe0',
+        text: '#f0fff0', textDim: '#80c0a0',
+        bg: 'rgba(8, 8, 18, 0.94)',
+        pillBg: 'rgba(0, 230, 118, 0.05)',
+        pillBorder: 'rgba(224, 64, 251, 0.25)',
+        hover: 'rgba(0, 230, 118, 0.10)',
+      },
+      lavender: {
+        name: 'Lavender',
+        emoji: '💜',
+        pink: '#ce93d8', pinkDeep: '#ab47bc',
+        blue: '#9575cd', blueSoft: '#b39ddb',
+        white: '#f3e5f5',
+        text: '#f8f0ff', textDim: '#a889b8',
+        bg: 'rgba(25, 18, 35, 0.92)',
+        pillBg: 'rgba(171, 71, 188, 0.06)',
+        pillBorder: 'rgba(206, 147, 216, 0.25)',
+        hover: 'rgba(149, 117, 205, 0.14)',
+      },
+      arctic: {
+        name: 'Arctic',
+        emoji: '❄️',
+        pink: '#b3e5fc', pinkDeep: '#4fc3f7',
+        blue: '#e1f5fe', blueSoft: '#b3e5fc',
+        white: '#ffffff',
+        text: '#f0faff', textDim: '#90afc5',
+        bg: 'rgba(12, 20, 30, 0.93)',
+        pillBg: 'rgba(179, 229, 252, 0.06)',
+        pillBorder: 'rgba(79, 195, 247, 0.22)',
+        hover: 'rgba(179, 229, 252, 0.12)',
+      },
+      rosegold: {
+        name: 'Rose Gold',
+        emoji: '🌹',
+        pink: '#e8b4b8', pinkDeep: '#b76e79',
+        blue: '#ecd5c8', blueSoft: '#f4e0d0',
+        white: '#faf0e6',
+        text: '#fef5ef', textDim: '#c4a99a',
+        bg: 'rgba(32, 22, 22, 0.92)',
+        pillBg: 'rgba(183, 110, 121, 0.07)',
+        pillBorder: 'rgba(183, 110, 121, 0.28)',
+        hover: 'rgba(232, 180, 184, 0.13)',
+      },
+    };
+
+    /* ======================================================
+       APP
+       ====================================================== */
+
+    function App() {
+      /* ---------- State ---------- */
+      const [showSeconds, setShowSeconds] = useState(false);
+      const [hearts, setHearts] = useState([]);
+      const lastWheel = useRef(0);
+      const taskRefs = useRef({});
+      const taskbarRef = useRef(null);
+
+      // Dynamic Island state: null | 'theme' | 'music' | 'date' | 'stats'
+      const [activeIsland, setActiveIsland] = useState(null);
+      const [currentTheme, setCurrentTheme] = useState(() =>
+        localStorage.getItem('hitomi-theme') || 'trans'
+      );
+
+      /* ---------- Providers ---------- */
+      const output = providers.outputMap;
+
+      const glazewm = output.glazewm;
+      const media = output.media;
+      const weather = output.weather;
+      const cpu = output.cpu;
+      const memory = output.memory;
+      const battery = output.battery;
+      const date = output.date;
+
+      const workspaces = glazewm?.currentWorkspaces ?? [];
+
+      // Semua window di semua workspace
+      const windows = workspaces.flatMap(getWindows);
+
+      // Otomatis scroll taskbar ke aplikasi yang sedang aktif
+      const focusedId = windows.find((w) => w.hasFocus)?.id;
+      useEffect(() => {
+        taskRefs.current[focusedId]?.scrollIntoView({
+          inline: 'nearest',
+          block: 'nearest',
+          behavior: 'smooth',
+        });
+      }, [focusedId]);
+
+      // Wheel listener non-pasif di taskbar agar mouse wheel selalu bisa scroll horizontal
+      useEffect(() => {
+        const el = taskbarRef.current;
+        if (!el) return;
+
+        function handleWheel(e) {
+          e.preventDefault();
+          const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+          el.scrollLeft += delta;
+        }
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheel);
+      }, []);
+
+      /* ---------- Apply theme ke CSS variables ---------- */
+      useEffect(() => {
+        const t = THEMES[currentTheme] || THEMES.trans;
+        const r = document.documentElement;
+        r.style.setProperty('--pink', t.pink);
+        r.style.setProperty('--pink-deep', t.pinkDeep);
+        r.style.setProperty('--blue', t.blue);
+        r.style.setProperty('--blue-soft', t.blueSoft);
+        r.style.setProperty('--white', t.white);
+        r.style.setProperty('--text', t.text);
+        r.style.setProperty('--text-dim', t.textDim);
+        r.style.setProperty('--bg', t.bg);
+        r.style.setProperty('--pill-bg', t.pillBg);
+        r.style.setProperty('--pill-border', t.pillBorder);
+        r.style.setProperty('--hover', t.hover);
+        localStorage.setItem('hitomi-theme', currentTheme);
+      }, [currentTheme]);
+
+      /* ---------- Tutup island jika klik di luar ---------- */
+      useEffect(() => {
+        if (!activeIsland) return;
+        function handle(e) {
+          if (
+            !e.target.closest('.dynamic-island') &&
+            !e.target.closest('.island-trigger')
+          ) {
+            setActiveIsland(null);
+          }
+        }
+        const timer = setTimeout(() => {
+          document.addEventListener('mousedown', handle);
+        }, 50);
+        return () => {
+          clearTimeout(timer);
+          document.removeEventListener('mousedown', handle);
+        };
+      }, [activeIsland]);
+
+      /* ---------- Aksi interaktif ---------- */
+
+      // Buka Start Menu Windows
+      async function openStartMenu() {
+        if (!glazewm) return;
+        try {
+          await glazewm.runCommand(
+            `shell-exec powershell -NoProfile -Command "(New-Object -ComObject WScript.Shell).SendKeys('^{ESC}')"`
+          );
+        } catch (err) {
+          console.error('Gagal membuka Start Menu:', err);
+        }
+      }
+
+      // Klik aplikasi di taskbar
+      async function onTaskClick(win) {
+        if (!glazewm) return;
+
+        try {
+          if (isMinimized(win)) {
+            await glazewm.runCommand('set-tiling', win.id);
+            await glazewm.runCommand(`focus --container-id ${win.id}`);
+          } else if (win.hasFocus) {
+            await glazewm.runCommand('set-minimized', win.id);
+          } else {
+            await glazewm.runCommand(`focus --container-id ${win.id}`);
+          }
+        } catch (err) {
+          console.error('Gagal memproses klik taskbar:', err);
+        }
+      }
+
+      async function closeWindow(win) {
+        try {
+          if (isMinimized(win)) {
+            await glazewm.runCommand('set-tiling', win.id);
+          }
+          await glazewm.runCommand(`focus --container-id ${win.id}`);
+          await glazewm.runCommand('close', win.id);
+        } catch (err) {
+          console.error('Gagal menutup window:', err);
+        }
+      }
+
+      // Scroll di titik workspace = pindah workspace
+      function onWorkspaceWheel(e) {
+        const now = Date.now();
+        if (now - lastWheel.current < 180) return;
+        lastWheel.current = now;
+
+        glazewm?.runCommand(
+          e.deltaY > 0 ? 'focus --next-workspace' : 'focus --prev-workspace'
+        );
+      }
+
+      // Scroll di taskbar = geser kiri/kanan
+      function onTaskbarWheel(e) {
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        e.currentTarget.scrollLeft += delta;
+      }
+
+      // Klik hati = hati beterbangan
+      function burst() {
+        const base = Date.now();
+        const batch = Array.from({ length: 6 }, (_, i) => ({
+          id: base + i,
+          dx: Math.round(Math.random() * 44 - 22),
+          delay: i * 90,
+          blue: i % 2 === 1,
+        }));
+
+        setHearts((h) => [...h, ...batch]);
+
+        setTimeout(() => {
+          setHearts((h) => h.filter((x) => !batch.some((b) => b.id === x.id)));
+        }, 2000);
+      }
+
+      /* ---------- Data tampilan ---------- */
+
+      const dateText = date?.formatted
+        ? showSeconds
+          ? date.formatted
+          : date.formatted.slice(0, -3) // buang ":ss"
+        : '--';
+
+      const session = media?.currentSession;
+      const mediaText = session
+        ? [session.artist, session.title].filter(Boolean).join(' - ') || 'Unknown'
+        : 'Belum ada musik ♡';
+      const isPlaying = !!session?.isPlaying;
+
+      const cpuVal = cpu?.usage != null ? Math.round(cpu.usage) : 0;
+      const cpuUsage =
+        cpu?.usage != null ? `${cpu.usage.toFixed(1)}%` : '--';
+
+      const ramVal =
+        memory?.usedMemory != null && memory?.totalMemory != null
+          ? Math.round((memory.usedMemory / memory.totalMemory) * 100)
+          : 0;
+      const memoryUsage =
+        memory?.usedMemory != null && memory?.totalMemory != null
+          ? `${ramVal}%`
+          : '--';
+
+      const ramUsedGB =
+        memory?.usedMemory != null
+          ? (memory.usedMemory / 1073741824).toFixed(1)
+          : '?';
+      const ramTotalGB =
+        memory?.totalMemory != null
+          ? (memory.totalMemory / 1073741824).toFixed(1)
+          : '?';
+
+      const batteryPercent =
+        battery?.chargePercent != null
+          ? `${Math.round(battery.chargePercent)}%`
+          : null;
+
+      const temp =
+        weather?.celsiusTemp != null
+          ? `${Math.round(weather.celsiusTemp)}°`
+          : '--';
+
+      /* ---------- Calendar & Time helper ---------- */
+      function getNowInfo() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const today = now.getDate();
+        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        const dayName = days[now.getDay()];
+        const monthName = months[now.getMonth()];
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        const timeStr = `${hh}:${mm}:${ss}`;
+        return { year, today, dayName, monthName, timeStr };
+      }
+
+      const activeThemeObj = THEMES[currentTheme] || THEMES.trans;
+      const nowInfo = getNowInfo();
+
+      /* ======================================================
+         RENDER
+         ====================================================== */
+
+      return (
+        <div className="bar">
+
+          {/* ==================== LEFT ==================== */}
+          <div className="left">
+
+            {/* Brand → Start Menu */}
+            <div
+              className="brand"
+              onClick={openStartMenu}
+              title="Klik untuk buka Start Menu Windows"
+            >
+              <span className="prompt">›</span>
+              <span className="brand-text">HITOMI</span>
+            </div>
+
+            {/* Setting Ubah Warna Tema (Dynamic Island) */}
+            <button
+              className={`theme-trigger island-trigger ${
+                activeIsland === 'theme' ? 'active' : ''
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveIsland(activeIsland === 'theme' ? null : 'theme');
+              }}
+              title="Ubah Warna Tema (Dynamic Island)"
+            >
+              <span
+                className="theme-dot"
+                style={{
+                  background: `linear-gradient(135deg, ${activeThemeObj.blue}, ${activeThemeObj.pinkDeep})`,
+                }}
+              />
+              <span className="theme-trigger-icon">🎨</span>
+            </button>
+
+            {/* Workspace (scroll untuk pindah) */}
+            <div
+              className="pill workspaces"
+              onWheel={onWorkspaceWheel}
+              title="Scroll untuk pindah workspace"
+            >
+              {workspaces.map((ws) => (
+                <button
+                  key={ws.name}
+                  title={`Workspace ${ws.displayName || ws.name}`}
+                  className={ws.hasFocus ? 'ws active' : 'ws'}
+                  onClick={() =>
+                    glazewm.runCommand(`focus --workspace ${ws.name}`)
+                  }
+                />
+              ))}
+            </div>
+
+            {/* Media Pill → Dynamic Island Lagu */}
+            <div
+              className={`pill media island-trigger ${
+                activeIsland === 'music' ? 'island-active' : ''
+              }`}
+              onClick={() =>
+                setActiveIsland(activeIsland === 'music' ? null : 'music')
+              }
+              title="Klik untuk Dynamic Island Musik"
+            >
+              <button
+                className="media-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  media?.previous();
+                }}
+                title="Lagu sebelumnya"
+              >
+                ‹‹
+              </button>
+              <button
+                className="media-btn main"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  media?.togglePlayPause();
+                }}
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? '❚❚' : '▶'}
+              </button>
+              <button
+                className="media-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  media?.next();
+                }}
+                title="Lagu berikutnya"
+              >
+                ››
+              </button>
+
+              <span className="media-text">{mediaText}</span>
+
+              <span className={isPlaying ? 'eq playing' : 'eq'}>
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          </div>
+
+          {/* ==================== CENTER ==================== */}
+          <div className="center">
+            {activeIsland ? (
+              <div className={`dynamic-island island-${activeIsland}`}>
+
+                {/* ---- THEME ISLAND ---- */}
+                {activeIsland === 'theme' && (
+                  <div className="island-inner island-theme-inner">
+                    <span className="island-badge">🎨 Tema</span>
+                    <div
+                      className="theme-chips"
+                      onWheel={(e) => {
+                        e.currentTarget.scrollLeft += e.deltaY;
+                      }}
+                    >
+                      {Object.entries(THEMES).map(([key, t]) => (
+                        <button
+                          key={key}
+                          className={`theme-chip ${
+                            currentTheme === key ? 'active' : ''
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentTheme(key);
+                          }}
+                          title={t.name}
+                        >
+                          <span
+                            className="theme-chip-dot"
+                            style={{
+                              background: `linear-gradient(135deg, ${t.blue}, ${t.pink})`,
+                            }}
+                          />
+                          <span className="theme-chip-name">
+                            {t.emoji} {t.name}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      className="island-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveIsland(null);
+                      }}
+                      title="Tutup"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {/* ---- MUSIC ISLAND ---- */}
+                {activeIsland === 'music' && (
+                  <div className="island-inner island-music-inner">
+                    <div className="island-eq">
+                      <span className={`eq-bar ${isPlaying ? 'playing' : ''}`} style={{ '--i': 0 }} />
+                      <span className={`eq-bar ${isPlaying ? 'playing' : ''}`} style={{ '--i': 1 }} />
+                      <span className={`eq-bar ${isPlaying ? 'playing' : ''}`} style={{ '--i': 2 }} />
+                      <span className={`eq-bar ${isPlaying ? 'playing' : ''}`} style={{ '--i': 3 }} />
+                      <span className={`eq-bar ${isPlaying ? 'playing' : ''}`} style={{ '--i': 4 }} />
+                    </div>
+                    <div className="island-track" title={mediaText}>
+                      <span className="track-title">{session?.title || 'Belum ada musik ♡'}</span>
+                      {session?.artist && <span className="track-sep">•</span>}
+                      {session?.artist && <span className="track-artist">{session.artist}</span>}
+                    </div>
+                    <div className="island-media-controls">
+                      <button
+                        className="island-ctrl"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          media?.previous();
+                        }}
+                        title="Lagu sebelumnya"
+                      >
+                        ‹‹
+                      </button>
+                      <button
+                        className="island-ctrl play"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          media?.togglePlayPause();
+                        }}
+                        title={isPlaying ? 'Pause' : 'Play'}
+                      >
+                        {isPlaying ? '❚❚' : '▶'}
+                      </button>
+                      <button
+                        className="island-ctrl"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          media?.next();
+                        }}
+                        title="Lagu berikutnya"
+                      >
+                        ››
+                      </button>
+                    </div>
+                    <button
+                      className="island-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveIsland(null);
+                      }}
+                      title="Tutup"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {/* ---- DATE ISLAND ---- */}
+                {activeIsland === 'date' && (
+                  <div className="island-inner island-date-inner">
+                    <span className="island-date-day">
+                      📅 {nowInfo.dayName}, {nowInfo.today} {nowInfo.monthName} {nowInfo.year}
+                    </span>
+                    <span className="island-date-sep">|</span>
+                    <span className="island-date-clock">⏰ {nowInfo.timeStr}</span>
+                    <button
+                      className={`island-seconds-chip ${showSeconds ? 'active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowSeconds((s) => !s);
+                      }}
+                      title="Toggle detik di bar"
+                    >
+                      {showSeconds ? 'Detik: ON' : 'Detik: OFF'}
+                    </button>
+                    <button
+                      className="island-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveIsland(null);
+                      }}
+                      title="Tutup"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {/* ---- STATS ISLAND ---- */}
+                {activeIsland === 'stats' && (
+                  <div className="island-inner island-stats-inner">
+                    <div className="island-meter cpu">
+                      <span className="meter-label">󰘚 CPU</span>
+                      <span className="meter-val">{cpuUsage}</span>
+                      <div className="meter-bar-track">
+                        <div
+                          className="meter-bar-fill cpu"
+                          style={{ width: `${cpuVal}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="island-stat-sep">|</span>
+                    <div className="island-meter ram">
+                      <span className="meter-label">󰍛 RAM</span>
+                      <span className="meter-val">{ramUsedGB}/{ramTotalGB}GB</span>
+                      <div className="meter-bar-track">
+                        <div
+                          className="meter-bar-fill ram"
+                          style={{ width: `${ramVal}%` }}
+                        />
+                      </div>
+                    </div>
+                    {batteryPercent && (
+                      <>
+                        <span className="island-stat-sep">|</span>
+                        <div className="island-meter bat">
+                          <span className="meter-label">󰁹</span>
+                          <span className="meter-val">{batteryPercent}</span>
+                        </div>
+                      </>
+                    )}
+                    <button
+                      className="island-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveIsland(null);
+                      }}
+                      title="Tutup"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            ) : (
+              /* Normal Date Pill */
+              <div
+                className="pill date island-trigger"
+                onClick={() => setActiveIsland('date')}
+                title="Klik untuk Dynamic Island Tanggal & Jam"
+              >
+                <span className="sparkle">✦</span>
+                <span>{dateText}</span>
+                <span className="sparkle">✦</span>
+              </div>
+            )}
+          </div>
+
+          {/* ==================== RIGHT ==================== */}
+          <div className="right">
+
+            {/* Aplikasi yang sedang terbuka */}
+            <div className="taskbar" ref={taskbarRef} onWheel={onTaskbarWheel}>
+              {windows.length === 0 && (
+                <span className="empty">Belum ada aplikasi ♡</span>
+              )}
+
+              {windows.map((win) => {
+                const info = appInfo(win);
+                const minimized = isMinimized(win);
+
+                const cls = [
+                  'task',
+                  win.hasFocus ? 'active' : '',
+                  minimized ? 'minimized' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+
+                const hint = minimized
+                  ? 'Klik: buka kembali'
+                  : win.hasFocus
+                    ? 'Klik: minimize'
+                    : 'Klik: fokus';
+
+                return (
+                  <div
+                    key={win.id}
+                    role="button"
+                    tabIndex={0}
+                    ref={(el) => {
+                      taskRefs.current[win.id] = el;
+                    }}
+                    className={cls}
+                    title={`${win.title}\n\n${hint}  •  Klik tengah / ✕: tutup`}
+                    onClick={() => onTaskClick(win)}
+                    onMouseDown={(e) => {
+                      if (e.button === 1) e.preventDefault();
+                    }}
+                    onAuxClick={(e) => {
+                      if (e.button === 1) closeWindow(win);
+                    }}
+                  >
+                    <span className="task-icon">{info.icon}</span>
+                    <span className="task-name">{info.name}</span>
+                    <span
+                      className="task-close"
+                      title="Tutup aplikasi"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeWindow(win);
+                      }}
+                    >
+                      ✕
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="tray">
+
+              {/* Stats → Dynamic Island System Monitor */}
+              <div
+                className={`pill stats island-trigger ${
+                  activeIsland === 'stats' ? 'island-active' : ''
+                }`}
+                onClick={() =>
+                  setActiveIsland(activeIsland === 'stats' ? null : 'stats')
+                }
+                title="Klik untuk Dynamic Island CPU & RAM"
+              >
+                <span className="stat cpu">
+                  <span className="stat-icon">󰘚</span>
+                  {cpuUsage}
+                </span>
+                <span className="stat ram">
+                  <span className="stat-icon">󰍛</span>
+                  {memoryUsage}
+                </span>
+                {batteryPercent && (
+                  <span className="stat bat">
+                    <span className="stat-icon">󰁹</span>
+                    {batteryPercent}
+                  </span>
+                )}
+              </div>
+
+              <div className="pill weather">
+                <span>{weatherIcon(weather?.status)}</span>
+                <span>{temp}</span>
+              </div>
+
+              <div className="heart" onClick={burst} title="♡">
+                <span className="heart-icon">♥</span>
+                {hearts.map((h) => (
+                  <span
+                    key={h.id}
+                    className={h.blue ? 'float-heart blue' : 'float-heart'}
+                    style={{
+                      '--dx': `${h.dx}px`,
+                      animationDelay: `${h.delay}ms`,
+                    }}
+                  >
+                    ♥
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+        </div>
+      );
+    }
+
+    const root = createRoot(document.getElementById('root'));
+
+    providers.onOutput(() => {
+      root.render(<App />);
+    });
+  </script>
+</body>
+</html>
